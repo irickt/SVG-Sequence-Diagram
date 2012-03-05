@@ -32,6 +32,15 @@
 			scope.arrows = []
 			scope.notes = []
 			scope.wantHandDraw = true
+			scope.paperSizes = {
+				A0: {width: 2384, height: 3370},
+				A1: {width: 1684, height: 2384},
+				A2: {width: 1191, height: 1684},
+				A3:{width:  842, height: 1191},
+				A4:{width:  595, height: 842},
+			}
+			scope.pageSizes = Object.keys(scope.paperSizes)
+			scope.pageSize = 'A4'
 			scope.definition = 'participant: Alice as A\n\
 participant: B\n\
 \n\
@@ -115,22 +124,23 @@ A->User: Done'
 						scope.height += scope.note_height
 					}
 				}
-				//add height for margin and bottom user boxes
+				//add height for margin and height for bottom user boxes
 				scope.height += scope.margin + scope.user_height
-				for (var i in scope.users) {
-					var user = scope.users[i]
-					scope.users.push({
-						x: user.x,
-						y: scope.height - scope.user_height,
-						name: user.name
-					})
-				}
 				//add vertical lines
 				for (var i in scope.users) {
 					var user = scope.users[i]
 					scope.lines.push({
 						x: user.x + scope.user_width / 2, y: scope.user_height,
 				 		dx: 0, dy: scope.height - 2 * scope.user_height
+					})
+				}
+				//add bottom user boxes
+				for (var i in scope.users) {
+					var user = scope.users[i]
+					scope.users.push({
+						x: user.x,
+						y: scope.height - scope.user_height,
+						name: user.name
 					})
 				}
 				// console.log(scope.users, scope.lines, scope.arrows)
@@ -186,15 +196,7 @@ A->User: Done'
 			},
 			print: function(){
 				var scope = this
-				var pageSizes = {
-					A0: {width: 2384, height: 3370},
-					A1: {width: 1684, height: 2384},
-					A2: {width: 1191, height: 1684},
-					A3:{width:  842, height: 1191},
-					A4:{width:  595, height: 842},
-				}
-				var pageSize = 'A4'
-				var page = pageSizes[pageSize]
+				var page = scope.paperSizes[scope.pageSize]
 				var sw = page.width / (scope.width + 2 * scope.margin)
 				var sh = page.height / (scope.height + 2 * scope.margin)
 				var rotate = false
@@ -206,30 +208,78 @@ A->User: Done'
 					scale = Math.min(sw, sh)
 				}
 				var ps = '%!PS\n\
-/PageSize '+pageSize+'\n\
-/Times-Roman findfont\n\
-15 scalefont\n\
-setfont\n\
+/PageSize '+scope.pageSize+'\n\
 '+(rotate ? page.width+' 0 translate 90 rotate' : '')+'\n\
 '+scope.margin+' '+scope.margin+' translate\n\
 '+scale+' '+scale+' scale\n\
-/L { moveto rlineto } def\n\
+/UW '+scope.user_width+' def %user_width\n\
+/UH '+scope.user_height+' def %user_height\n\
+/NW '+scope.note_width+' def %note_width\n\
+/NH '+scope.note_height+' def %note_height\n\
+/wantHandDraw '+(scope.wantHandDraw ? 1 : 0)+' def\n\
+/SEED 120 def\n\
+/MOD {\n\
+  % a mod b == a - floor(a / b) * b\n\
+  2 copy div floor mul neg add\n\
+} def\n\
+/RND { % returns a float number between -x and x\n\
+  /SEED SEED 13 mul 1 add 256 mod def\n\
+  neg dup neg\n\
+  %-x x\n\
+  SEED 256 div\n\
+  %-x x rnd\n\
+  mul 2 mul add\n\
+} def\n\
+/L {%dx dy x0 y0\n\
+  /SEED 120 def\n\
+  moveto LL\n\
+} def\n\
+/LL {\n\
+  %dx dy\n\
+  matrix currentmatrix %saves current transformation matrix\n\
+  3 1 roll\n\
+  %CTM dx dy\n\
+  currentpoint translate\n\
+  %compute how many segments we want to use\n\
+  2 copy abs exch abs add 10 div ceiling cvi\n\
+  %CTM dx dy count\n\
+  3 1 roll\n\
+  %CTM count dx dy\n\
+  1 index 3 index div  1 index 4 index div\n\
+  %CTM count dx dy stepx stepy\n\
+  0 0\n\
+  %CTM count dx dy stepx stepy x y\n\
+  7 -1 roll\n\
+  %CTM dx dy stepx stepy x y count\n\
+  -1 add {\n\
+    2 index add  exch %y += stepy\n\
+    3 index add  exch %x += stepx\n\
+    2 copy 1 RND add exch 1 RND add exch lineto\n\
+  } repeat\n\
+  %add the last segment without any randomization\n\
+  2 index add  exch\n\
+  3 index add  exch\n\
+  lineto\n\
+  pop pop pop pop\n\
+  setmatrix %restore CTM\n\
+} def\n\
+0 wantHandDraw eq {\n\
+  /LL {rlineto} def\n\
+} if\n\
 /ARROW { % text x y direction length\n\
-  2 setlinewidth\n\
-  1 setlinejoin\n\
-  1 setlinecap\n\
+  /Times-Roman findfont 15 scalefont setfont\n\
+  2 setlinewidth 1 setlinejoin 1 setlinecap\n\
   newpath\n\
   % text x y direction length\n\
-  2 copy\n\
-  % text x y direction length direction length\n\
-  mul 0\n\
-  % text x y direction length rlen 0\n\
+  2 copy mul 0\n\
+  % text x y direction length dx 0\n\
   5 index 5 index L\n\
   % text x y direction length\n\
+  %draw the arrow head\n\
   1 index\n\
   dup -10 mul -10 rmoveto\n\
-  dup 10 mul 10 rlineto\n\
-  -10 mul 10 rlineto\n\
+  dup 10 mul 10 LL\n\
+  -10 mul 10 LL\n\
   stroke\n\
   % text x y direction length\n\
   % fill the background of the text with white\n\
@@ -257,76 +307,56 @@ setfont\n\
   show\n\
   stroke\n\
 } def\n\
-/USER {\n\
-  2 setlinewidth\n\
+/RECT {\n\
+  %x y width height\n\
+  1 index 0  5 index 5 index  L %line: width 0 x y\n\
+  0 1 index  LL %rlineto: 0 height\n\
+  1 index neg 0  LL %rlineto: -width 0\n\
+  0 1 index neg  LL %rlineto: 0 -height\n\
+  pop pop pop pop\n\
+} def\n\
+/FILLRECT {\n\
+  %fillgray bordergray x y width height\n\
   % draw the gray background\n\
-  newpath\n\
-  2 copy\n\
-  moveto\n\
-  100 0 rlineto\n\
-  0 -50 rlineto\n\
-  -100 0 rlineto\n\
-  closepath\n\
-  0.84375 setgray\n\
+  newpath 4 copy RECT closepath\n\
+  5 index setgray\n\
   fill\n\
   % draw the border of the box\n\
-  newpath\n\
-  2 copy\n\
-  moveto\n\
-  100 0 rlineto\n\
-  0 -50 rlineto\n\
-  -100 0 rlineto\n\
-  closepath\n\
-  0 setgray\n\
-  stroke\n\
+  %fillgray bordergray x y width height\n\
+  newpath RECT closepath\n\
+  setgray stroke pop\n\
+} def\n\
+/USER { %name x y\n\
+  /Times-Roman findfont 15 scalefont setfont\n\
+  2 setlinewidth\n\
+  0.84375 0  3 index 3 index  UW UH neg FILLRECT\n\
   % draw the text in the center of the box\n\
   newpath\n\
   moveto\n\
-  50 -25 rmoveto % center of the box\n\
+  UW 2 div UH neg 2 div rmoveto % center of the box\n\
   0 -5 rmoveto % lower the text a little bit, so it will be in the center of the box visually\n\
   0 setgray\n\
   dup stringwidth pop 2 div neg 0 rmoveto\n\
   show\n\
   stroke\n\
 } def\n\
-/LINE {\n\
+/LINE { %x y dx dy\n\
   2 setlinewidth\n\
   1 setlinejoin\n\
   1 setlinecap\n\
   newpath\n\
-  4 2 roll\n\
-  L\n\
+  4 2 roll L\n\
   stroke\n\
 } def\n\
-/NOTE {\n\
-  /Times-Roman findfont\n\
-  10 scalefont\n\
-  setfont\n\
+/NOTE { %text x y\n\
+  /Times-Roman findfont 10 scalefont setfont\n\
   1 setlinewidth\n\
-  % draw the white background\n\
-  newpath\n\
-  2 copy\n\
-  moveto\n\
-  100 0 rlineto\n\
-  0 -30 rlineto\n\
-  -100 0 rlineto\n\
-  closepath\n\
-  1 setgray\n\
-  fill\n\
-  % draw the border of the box\n\
-  newpath\n\
-  2 copy\n\
-  moveto\n\
-  100 0 rlineto\n\
-  0 -30 rlineto\n\
-  -100 0 rlineto\n\
-  closepath\n\
-  0 setgray\n\
-  stroke\n\
+  % draw the filled rect\n\
+  1 0  3 index 3 index  NW NH neg FILLRECT\n\
   % draw the text in the center of the box\n\
   newpath\n\
   moveto\n\
-  50 -15 rmoveto % center of the box\n\
+  NW 2 div NH neg 2 div rmoveto % center of the box\n\
   0 -3 rmoveto % lower the text a little bit, so it will be in the center of the box visually\n\
   0 setgray\n\
   dup stringwidth pop 2 div neg 0 rmoveto\n\
@@ -347,7 +377,7 @@ setfont\n\
 					var l = arrow.length
 					var d = arrow.direction
 					// ps += '% arrow '+arrow.x+', '+arrow.y+', length: '+l+', direction: '+d+'\n'
-					ps += '('+arrow.text+') '+arrow.x+' '+arrow.y+' '+d+' '+l+' ARROW\n'
+					ps += '('+arrow.text+') '+arrow.x+' '+(scope.height-arrow.y)+' '+d+' '+l+' ARROW\n'
 				}
 				for (var i in scope.notes) {
 					var note = scope.notes[i]
@@ -369,7 +399,8 @@ setfont\n\
 				<input type="checkbox" ng:model="wantHandDraw"/> Make it looks like a hand drawn diagram<br/>
 				<button type="button" ng:click="draw()">Draw</button>
 				<br>
-				<button type="button" ng:click="print()">Download diagram as PostScript</button>
+				Download diagram as <select ng:options="s for s in pageSizes" ng:model="pageSize"></select> PostScript.
+				<button type="button" ng:click="print()">Download</button>
 			</td>
 			<td>
 				<svg version="1.1" ng:bind-attr="{viewBox:'{{-margin}} {{-margin}} {{width+2*margin}} {{height+2*margin}}'}">
